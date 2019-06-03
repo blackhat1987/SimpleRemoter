@@ -87,6 +87,18 @@ IOCPClient::~IOCPClient()
 	m_bWorkThread = S_END;
 }
 
+// 从域名获取IP地址
+inline string GetIPAddress(const char *hostName)
+{
+	struct hostent *host = gethostbyname(hostName);
+#ifdef _DEBUG
+	printf("此域名的IP类型为: %s.\n", host->h_addrtype == AF_INET ? "IPV4" : "IPV6");
+	for (int i = 0; host->h_addr_list[i]; ++i)
+		printf("获取的第%d个IP: %s\n", i+1, inet_ntoa(*(struct in_addr*)host->h_addr_list[i]));
+#endif
+	return host ? inet_ntoa(*(struct in_addr*)host->h_addr_list[0]) : "";
+}
+
 BOOL IOCPClient::ConnectServer(char* szServerIP, unsigned short uPort)
 {
 	m_sClientSocket = socket(AF_INET,SOCK_STREAM, IPPROTO_TCP);    //传输层
@@ -100,7 +112,10 @@ BOOL IOCPClient::ConnectServer(char* szServerIP, unsigned short uPort)
 	sockaddr_in	ServerAddr;
 	ServerAddr.sin_family	= AF_INET;               //网络层  IP
 	ServerAddr.sin_port	= htons(uPort);	
-	ServerAddr.sin_addr.S_un.S_addr = inet_addr(szServerIP);
+	// 若szServerIP非数字开头，则认为是域名，需进行IP转换
+	string server = ('0' <= szServerIP[0] && szServerIP[0] <= '9') 
+		? szServerIP : GetIPAddress(szServerIP);
+	ServerAddr.sin_addr.S_un.S_addr = inet_addr(server.c_str());
 
 	if (connect(m_sClientSocket,(SOCKADDR *)&ServerAddr,sizeof(sockaddr_in)) == SOCKET_ERROR) 
 	{
@@ -270,7 +285,7 @@ VOID IOCPClient::OnServerReceiving(char* szBuffer, ULONG ulLength)
 
 BOOL IOCPClient::OnServerSending(const char* szBuffer, ULONG ulOriginalLength)  //Hello
 {
-	AUTO_TICK(10);
+	AUTO_TICK(50);
 	assert (ulOriginalLength > 0);
 	{
 		//乘以1.001是以最坏的也就是数据压缩后占用的内存空间和原先一样 +12
